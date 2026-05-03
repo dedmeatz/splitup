@@ -1,0 +1,612 @@
+<!-- 
+{
+  "version": "1.11",
+  "last_updated": "2024-05-23",
+  "surgical_changes": [
+    "Added the ability to remove participants directly from the 'Who Paid' section in Bill Details.",
+    "Implemented window.removePersonFromBill() to handle data cleanup (payments, splits, and item assignments).",
+    "Added a subtle remove button (x) to the contribution grid items.",
+    "Ensured self-protection: The bill owner (state.selfName) cannot be removed from a bill.",
+    "Maintained high-density layout and minimalist Stone & Graphite palette."
+  ]
+}
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SettleUp - Minimalist Bill Splitter</title>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        .calc-btn { @apply p-3 bg-slate-100 rounded-lg text-sm font-bold text-slate-700 active:bg-slate-200 transition-colors; }
+        .calc-op { @apply bg-slate-200 text-slate-800; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+
+    <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col relative pb-16">
+        <header class="p-3 bg-white border-b border-slate-200 sticky top-0 z-20 flex items-center justify-between">
+            <h1 id="view-title" class="text-base font-bold text-slate-800 tracking-tight">SettleUp</h1>
+            <button onclick="window.openSettings()" class="p-1.5 text-slate-400 hover:text-slate-800 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            </button>
+        </header>
+
+        <main id="main-view" class="flex-grow p-3 space-y-2 overflow-y-auto"></main>
+
+        <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-slate-200 p-1 flex justify-around items-center z-30">
+            <button onclick="router.navigate('dashboard')" class="nav-btn p-1.5 flex flex-col items-center text-slate-800">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+                <span class="text-[9px] mt-0.5 font-bold">Home</span>
+            </button>
+            <button onclick="window.resetCreateStep(); router.navigate('create')" class="bg-slate-800 text-white rounded-full p-3 -mt-8 shadow-lg hover:bg-slate-900 transition-transform active:scale-90">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+            </button>
+            <button onclick="router.navigate('bills')" class="nav-btn p-1.5 flex flex-col items-center text-slate-400">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+                <span class="text-[9px] mt-0.5 font-bold">Bills</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-container" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-white w-full max-w-md rounded-t-xl sm:rounded-xl p-4 shadow-2xl transition-all translate-y-full" id="modal-content"></div>
+    </div>
+
+    <!-- Calculator Overlay -->
+    <div id="calc-container" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden p-4 space-y-3">
+            <div class="bg-slate-50 p-4 rounded-xl text-right">
+                <p id="calc-display-history" class="text-[10px] text-slate-400 font-bold h-4"> </p>
+                <p id="calc-display" class="text-2xl font-bold text-slate-800 truncate">0</p>
+            </div>
+            <div class="grid grid-cols-4 gap-2">
+                <button onclick="window.calcAction('C')" class="calc-btn bg-red-50 text-red-600">C</button>
+                <button onclick="window.calcAction('/')" class="calc-btn calc-op">/</button>
+                <button onclick="window.calcAction('*')" class="calc-btn calc-op">×</button>
+                <button onclick="window.calcAction('back')" class="calc-btn"><svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z"/></svg></button>
+                <button onclick="window.calcAction('7')" class="calc-btn">7</button>
+                <button onclick="window.calcAction('8')" class="calc-btn">8</button>
+                <button onclick="window.calcAction('9')" class="calc-btn">9</button>
+                <button onclick="window.calcAction('-')" class="calc-btn calc-op">-</button>
+                <button onclick="window.calcAction('4')" class="calc-btn">4</button>
+                <button onclick="window.calcAction('5')" class="calc-btn">5</button>
+                <button onclick="window.calcAction('6')" class="calc-btn">6</button>
+                <button onclick="window.calcAction('+')" class="calc-btn calc-op">+</button>
+                <button onclick="window.calcAction('1')" class="calc-btn">1</button>
+                <button onclick="window.calcAction('2')" class="calc-btn">2</button>
+                <button onclick="window.calcAction('3')" class="calc-btn">3</button>
+                <button onclick="window.calcAction('=')" class="calc-btn bg-slate-800 text-white row-span-2">=</button>
+                <button onclick="window.calcAction('0')" class="calc-btn col-span-2">0</button>
+                <button onclick="window.calcAction('.')" class="calc-btn">.</button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-2">
+                <button onclick="window.closeCalculator()" class="p-2 bg-slate-100 text-slate-500 text-xs font-bold rounded-lg">Cancel</button>
+                <button onclick="window.applyCalculator()" class="p-2 bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm">Use Result</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA PERSISTENCE & STATE ---
+        const APP_ID = 'settleup_v1';
+        let state = {
+            selfName: localStorage.getItem(`${APP_ID}_self`) || 'Me',
+            bills: JSON.parse(localStorage.getItem(`${APP_ID}_bills`)) || []
+        };
+        
+        window.createStep = 1;
+        window.detailToggles = { paid: true, summary: false };
+        window.calcTarget = null;
+        window.calcState = "0";
+
+        const saveState = () => {
+            localStorage.setItem(`${APP_ID}_self`, state.selfName);
+            localStorage.setItem(`${APP_ID}_bills`, JSON.stringify(state.bills));
+        };
+
+        const calculateSequentialTax = (subtotal) => {
+            const serviceTax = subtotal * 0.10;
+            const subWithService = subtotal + serviceTax;
+            const gst = subWithService * 0.09;
+            return { subtotal, serviceTax, gst, total: subWithService + gst };
+        };
+
+        // --- ROUTER ---
+        const router = {
+            currentView: 'dashboard',
+            previousView: 'dashboard',
+            params: {},
+            navigate(view, params = {}) {
+                if (view !== this.currentView) this.previousView = this.currentView;
+                this.currentView = view;
+                this.params = params;
+                if (view === 'detail') { window.detailToggles = { paid: true, summary: false }; }
+                this.render();
+            },
+            render() {
+                const main = document.getElementById('main-view');
+                const title = document.getElementById('view-title');
+                main.innerHTML = '';
+                document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.replace('text-slate-800', 'text-slate-400'));
+                switch(this.currentView) {
+                    case 'dashboard': title.innerText = 'Dashboard'; this.renderDashboard(main); break;
+                    case 'create': title.innerText = 'New Bill'; this.renderCreateBill(main); break;
+                    case 'bills': title.innerText = 'All Bills'; this.renderBillsList(main); break;
+                    case 'detail': title.innerText = 'Bill Details'; this.renderBillDetail(main, this.params.id); break;
+                }
+                window.scrollTo(0,0);
+            },
+
+            renderDashboard(container) {
+                let netBalance = 0;
+                state.bills.forEach(bill => {
+                    const results = this.processBillLogic(bill);
+                    const myResult = results.peopleSplits.find(p => p.name === state.selfName);
+                    if (myResult) netBalance += myResult.net;
+                });
+                const absBalance = Math.abs(netBalance).toFixed(2);
+                const isOwed = netBalance < 0;
+
+                container.innerHTML = `
+                    <div class="${isOwed ? 'bg-emerald-700' : 'bg-slate-800'} rounded-xl p-4 text-white shadow-sm transition-colors duration-500">
+                        <p class="text-white/80 text-xs mb-0.5 font-medium">${netBalance === 0 ? 'Settled Up' : (isOwed ? 'You are Owed' : 'You Owe')}</p>
+                        <h2 class="text-2xl font-bold tracking-tight">$${absBalance}</h2>
+                    </div>
+                    <div class="space-y-2">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Recent Activity</h3>
+                        ${state.bills.length === 0 ? `
+                            <div class="bg-white rounded-xl p-6 text-center border border-slate-200 border-dashed">
+                                <p class="text-slate-400 text-xs">No bills yet.</p>
+                            </div>
+                        ` : state.bills.slice(-5).reverse().map(bill => {
+                            const results = this.processBillLogic(bill);
+                            const myStatus = results.peopleSplits.find(p => p.name === state.selfName);
+                            return `
+                            <div onclick="router.navigate('detail', {id: '${bill.id}'})" class="bg-white p-3 rounded-xl border border-slate-200 flex justify-between items-center cursor-pointer active:bg-slate-50">
+                                <div>
+                                    <p class="font-bold text-slate-800 text-sm">${bill.title}</p>
+                                    <p class="text-[10px] text-slate-400 uppercase font-bold tracking-tight">${bill.mode}</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-xs font-bold ${myStatus?.net > 0 ? 'text-red-500' : (myStatus?.net < 0 ? 'text-emerald-700' : 'text-slate-400')}">
+                                        ${myStatus ? (myStatus.net > 0 ? 'Owe $' + myStatus.net.toFixed(2) : (myStatus.net < 0 ? 'Owed $' + Math.abs(myStatus.net).toFixed(2) : 'Settled')) : '-'}
+                                    </p>
+                                </div>
+                            </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            },
+
+            renderCreateBill(container) {
+                const step = window.createStep;
+                const billTitle = document.getElementById('bill-title')?.value || '';
+                container.innerHTML = `
+                    <div class="space-y-2 relative">
+                        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                            <div onclick="window.setCreateStep(1)" class="p-3 flex justify-between items-center cursor-pointer ${step !== 1 ? 'bg-slate-50' : ''}">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 1 ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-500'}">1</span>
+                                    <span class="text-sm font-bold ${step === 1 ? 'text-slate-800' : 'text-slate-500'}">Bill Info</span>
+                                </div>
+                                ${step !== 1 ? `<span class="text-xs text-slate-800 font-bold tracking-tight">${document.getElementById('bill-title')?.value || 'Ready'}</span>` : ''}
+                            </div>
+                            <div class="p-3 pt-0 space-y-3 ${step !== 1 ? 'hidden' : ''}">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider">Bill Name</label>
+                                    <input type="text" id="bill-title" placeholder="e.g. Dinner" value="${billTitle}" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider">Splitting Mode</label>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <button onclick="window.selectMode('itemized')" class="p-2 rounded-lg border-2 text-xs font-bold ${window.newBillMode === 'itemized' ? 'border-slate-800 bg-slate-50 text-slate-800' : 'border-transparent bg-slate-50 text-slate-500'}">Itemized</button>
+                                        <button onclick="window.selectMode('percentage')" class="p-2 rounded-lg border-2 text-xs font-bold ${window.newBillMode === 'percentage' ? 'border-slate-800 bg-slate-50 text-slate-800' : 'border-transparent bg-slate-50 text-slate-500'}">Percentage</button>
+                                    </div>
+                                </div>
+                                <button onclick="window.setCreateStep(2)" class="w-full bg-slate-800 text-white text-xs font-bold py-2 rounded-lg active:scale-95 transition-transform">Next Step</button>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                            <div onclick="window.setCreateStep(2)" class="p-3 flex justify-between items-center cursor-pointer ${step !== 2 ? 'bg-slate-50' : ''}">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 2 ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-500'}">2</span>
+                                    <span class="text-sm font-bold ${step === 2 ? 'text-slate-800' : 'text-slate-500'}">Involved People</span>
+                                </div>
+                                ${step !== 2 ? `<span class="text-xs text-slate-400 font-bold">${window.newBillPeople?.length || 1} People</span>` : ''}
+                            </div>
+                            <div class="p-3 pt-0 space-y-3 ${step !== 2 ? 'hidden' : ''}">
+                                <div id="people-chips" class="flex flex-wrap gap-1.5">
+                                    ${(window.newBillPeople || [state.selfName]).map(p => `
+                                        <div class="bg-slate-100 text-slate-700 pl-2.5 pr-1 py-0.5 rounded-full text-[10px] font-bold border border-slate-200 flex items-center gap-1.5 group">
+                                            <span>${p}</span>
+                                            ${p !== state.selfName ? `
+                                                <button onclick="window.removePersonFromNewBill('${p}')" class="p-0.5 text-slate-400 hover:text-red-500">
+                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                                                </button>
+                                            ` : ''}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                <div class="flex gap-2">
+                                    <input type="text" id="person-input" placeholder="Name" class="flex-grow p-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none text-sm">
+                                    <button onclick="window.addPerson()" class="bg-slate-200 text-slate-700 px-3 rounded-lg text-xs font-bold">Add</button>
+                                </div>
+                                <div class="pt-2 flex gap-2">
+                                    <button onclick="window.setCreateStep(1)" class="w-1/3 bg-slate-100 text-slate-500 text-xs font-bold py-2 rounded-lg">Back</button>
+                                    <button onclick="window.createBill()" class="w-2/3 bg-slate-800 text-white text-xs font-bold py-2 rounded-lg shadow-md shadow-slate-200 active:scale-95 transition-transform">Create Bill</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+
+            renderBillDetail(container, id) {
+                const bill = state.bills.find(b => b.id === id);
+                if (!bill) return router.navigate('dashboard');
+                const res = this.processBillLogic(bill);
+                const totalPaid = Object.values(bill.payments || {}).reduce((a, b) => a + parseFloat(b || 0), 0);
+                
+                // Delta Logic
+                const pDelta = (bill.totalAmount || 0) - totalPaid;
+                const isPMismatch = Math.abs(pDelta) > 0.01;
+                const pColor = pDelta > 0 ? 'text-red-500' : 'text-emerald-700';
+                const pText = `Total $${totalPaid.toFixed(2)} does not match $${(bill.totalAmount || 0).toFixed(2)}. Difference is <span class="${pColor} font-bold">$${Math.abs(pDelta).toFixed(2)}</span>`;
+                
+                const iDelta = (bill.totalAmount || 0) - res.total;
+                const isIMismatch = bill.mode === 'itemized' && bill.items.length > 0 && Math.abs(iDelta) > 0.01;
+                const iColor = iDelta > 0 ? 'text-red-500' : 'text-emerald-700';
+                const iText = `Calculated $${res.total.toFixed(2)} does not match $${(bill.totalAmount || 0).toFixed(2)}. Difference is <span class="${iColor} font-bold">$${Math.abs(iDelta).toFixed(2)}</span>`;
+
+                const creditors = res.peopleSplits.filter(x => x.paid > x.totalConsumption + 0.01).map(x => x.name);
+                const owesTo = creditors.length > 0 
+                    ? creditors.join(', ').replace(/, ([^,]*)$/, ' & $1') 
+                    : 'others';
+
+                container.innerHTML = `
+                    <div class="flex items-center justify-between mb-1 px-1">
+                        <div class="flex items-center gap-2 overflow-hidden">
+                            <button onclick="router.navigate('bills')" class="text-slate-400"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg></button>
+                            <h2 class="text-lg font-bold tracking-tight truncate">${bill.title}</h2>
+                        </div>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <button onclick="window.deleteBill('${bill.id}')" class="text-[10px] font-bold text-slate-500 px-2 py-1 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">Delete</button>
+                            <button onclick="router.navigate('dashboard')" class="text-[10px] font-bold bg-slate-800 text-white px-3 py-1 rounded-lg shadow-sm active:scale-95 transition-transform">Save</button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                        <div onclick="window.toggleDetailSection('paid')" class="p-2.5 flex justify-between items-center cursor-pointer bg-slate-50/50">
+                            <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">1. Who Paid / Contributions</h3>
+                            <div class="flex items-center gap-2">
+                                ${window.detailToggles.paid ? '' : `<span class="text-xs font-bold text-slate-700 tracking-tight">$${(bill.totalAmount || 0).toFixed(2)}</span>`}
+                                <svg class="w-4 h-4 text-slate-400 transform transition-transform ${window.detailToggles.paid ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                        </div>
+                        <div class="p-3 pt-1 space-y-2.5 ${window.detailToggles.paid ? '' : 'hidden'}">
+                            <div>
+                                <label class="block text-[9px] font-bold text-slate-500 uppercase mb-1 tracking-wide">Total Bill Amount (Grand Total)</label>
+                                <div class="flex gap-2">
+                                    <input type="number" step="0.01" id="bill-grand-total" value="${bill.totalAmount || ''}" onchange="window.updateBillTotal('${bill.id}', this.value)" placeholder="Enter amount" class="flex-grow bg-slate-50 p-2 rounded-lg text-base font-bold focus:outline-none border border-slate-200">
+                                    <button onclick="window.openCalculator('bill-grand-total')" class="bg-slate-100 p-2 rounded-lg text-slate-500 active:bg-slate-200"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg></button>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                ${bill.people.map(p => `
+                                    <div class="bg-slate-50 p-1.5 rounded-lg border border-slate-100 relative group">
+                                        <div class="flex justify-between items-center mb-0.5">
+                                            <label class="block text-[9px] text-slate-400 font-bold truncate pr-4">${p}</label>
+                                            ${p !== state.selfName ? `
+                                                <button onclick="window.removePersonFromBill('${bill.id}', '${p}')" class="text-slate-300 hover:text-red-500 transition-colors">
+                                                    <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>
+                                                </button>
+                                            ` : ''}
+                                        </div>
+                                        <input type="number" step="0.01" value="${bill.payments[p] || 0}" onchange="window.updatePayment('${bill.id}', '${p}', this.value)" class="w-full bg-transparent border-none focus:outline-none text-xs font-bold text-slate-700">
+                                    </div>
+                                `).join('')}
+                            </div>
+
+                            <div class="bg-slate-50 p-2 rounded-lg border border-slate-200 border-dashed">
+                                <label class="block text-[9px] font-bold text-slate-500 uppercase mb-1 tracking-wide">Add Forgotten Person</label>
+                                <div class="flex gap-1.5">
+                                    <input type="text" id="add-forgotten-person" placeholder="Name" class="flex-grow p-1.5 bg-white border border-slate-200 rounded text-xs focus:outline-none">
+                                    <button onclick="window.addPersonToBill('${bill.id}')" class="bg-slate-800 text-white px-3 rounded text-[10px] font-bold">Add</button>
+                                </div>
+                            </div>
+
+                            ${isPMismatch ? `<p class="text-[10px] bg-slate-50 p-2 rounded border border-slate-100 text-slate-500">${pText}</p>` : ''}
+                            <button onclick="window.finishPaidSection()" class="w-full bg-slate-800 text-white text-[10px] font-bold py-2 rounded-lg shadow-sm active:scale-95 transition-transform">Confirm & Next</button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                        <div onclick="window.toggleDetailSection('summary')" class="p-2.5 flex justify-between items-center cursor-pointer bg-slate-50/50">
+                            <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">2. Summary Breakdown</h3>
+                            <div class="flex items-center gap-2">
+                                ${window.detailToggles.summary ? '' : `<span class="text-xs font-bold text-slate-700 tracking-tight">$${res.total.toFixed(2)}</span>`}
+                                <svg class="w-4 h-4 text-slate-400 transform transition-transform ${window.detailToggles.summary ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                        </div>
+                        <div class="p-3 pt-1 space-y-1 ${window.detailToggles.summary ? '' : 'hidden'}">
+                            <div class="flex justify-between text-xs text-slate-500"><span>Subtotal</span><span>$${res.subtotal.toFixed(2)}</span></div>
+                            <div class="flex justify-between text-xs text-slate-500"><span>Service (10%)</span><span>$${res.serviceTax.toFixed(2)}</span></div>
+                            <div class="flex justify-between text-xs text-slate-500"><span>GST (9%)</span><span>$${res.gst.toFixed(2)}</span></div>
+                            <div class="flex justify-between font-bold text-sm text-slate-800 pt-1 mt-1 border-t border-slate-100"><span>Calculated Total</span><span>$${res.total.toFixed(2)}</span></div>
+                            ${isIMismatch ? `<p class="text-[10px] bg-amber-50 p-2 rounded border border-amber-100 mt-2 text-slate-600">${iText}</p>` : ''}
+                        </div>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Split Breakdown</h3>
+                        <div class="grid gap-2">
+                            ${res.peopleSplits.map(p => `
+                                <div class="bg-white p-2.5 rounded-xl border border-slate-200">
+                                    <div class="flex justify-between items-center">
+                                        <span class="font-bold text-slate-700 text-sm tracking-tight">${p.name}</span>
+                                        <span class="text-slate-800 font-bold text-sm tracking-tight">$${p.totalConsumption.toFixed(2)}</span>
+                                    </div>
+                                    <div class="flex justify-between text-[10px] mt-0.5">
+                                        <span class="text-slate-400">Paid: $${p.paid.toFixed(2)}</span>
+                                        <span class="font-bold ${p.net > 0 ? 'text-red-500' : (p.net < 0 ? 'text-emerald-700' : 'text-slate-400')} uppercase tracking-tight">
+                                            ${p.net > 0.01 ? `Owes ${owesTo} $${p.net.toFixed(2)}` : (p.net < -0.01 ? 'Owed $' + Math.abs(p.net).toFixed(2) : 'Settled')}
+                                        </span>
+                                    </div>
+                                    ${bill.mode === 'percentage' ? `
+                                        <div class="mt-2 flex items-center gap-2">
+                                            <input type="range" min="0" max="100" value="${bill.splits[p.name] || 0}" oninput="window.updateSplitRange('${bill.id}', '${p.name}', this.value)" class="flex-grow accent-slate-800 h-1">
+                                            <span class="text-[9px] font-bold w-6 text-right">${bill.splits[p.name] || 0}%</span>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    ${bill.mode === 'itemized' ? `
+                        ${(bill.totalAmount || 0) === 0 ? `
+                            <div class="bg-stone-100 border border-stone-200 p-3 rounded-xl text-center">
+                                <p class="text-[10px] text-stone-500 font-bold uppercase tracking-wide">Enter Total Bill Amount in Step 1 to add items</p>
+                            </div>
+                        ` : `
+                            <div class="bg-white p-3 rounded-xl border border-slate-200 space-y-2 shadow-sm">
+                                <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Add Line Item</h3>
+                                <div class="grid grid-cols-12 gap-2">
+                                    <input type="text" id="item-name" placeholder="Item Name" class="col-span-6 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none">
+                                    <input type="number" id="item-amount" placeholder="Amt" class="col-span-4 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none">
+                                    <button onclick="window.openCalculator('item-amount')" class="col-span-2 bg-slate-100 p-2 rounded-lg text-slate-500 active:bg-slate-200 flex items-center justify-center"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg></button>
+                                </div>
+                                <div id="item-people-selection" class="flex flex-wrap gap-1.5 p-1.5 bg-slate-50 border border-slate-100 rounded-lg">
+                                    ${bill.people.map(p => `
+                                        <label class="flex items-center gap-1 text-[9px] font-bold text-slate-600 bg-white border border-slate-200 px-1.5 py-0.5 rounded select-none cursor-pointer">
+                                            <input type="checkbox" value="${p}" checked class="item-assign-check accent-slate-800"> <span>${p}</span>
+                                        </label>
+                                    `).join('')}
+                                </div>
+                                <button onclick="window.addItem('${bill.id}')" class="w-full bg-slate-800 text-white text-xs font-bold py-2 rounded-lg active:scale-95 transition-transform">Add Item</button>
+                            </div>
+                        `}
+                        <div class="space-y-1.5">
+                            <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Items List</h3>
+                            ${bill.items.length === 0 ? '<p class="text-slate-400 text-[10px] italic px-1">No items added yet</p>' : bill.items.map((it, idx) => {
+                                const targets = Array.isArray(it.assignedTo) ? it.assignedTo : [it.assignedTo];
+                                return `
+                                <div class="flex justify-between items-center bg-white border border-slate-100 p-2 rounded-lg shadow-sm">
+                                    <div class="max-w-[65%]">
+                                        <p class="font-bold text-slate-700 text-xs truncate tracking-tight">${it.name}</p>
+                                        <p class="text-[9px] text-slate-400 truncate uppercase font-bold tracking-tight">Split: ${targets.length === bill.people.length ? 'Everyone' : targets.join(', ')}</p>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="font-bold text-slate-800 text-xs tracking-tight">$${parseFloat(it.amount).toFixed(2)}</span>
+                                        <div class="flex gap-0.5">
+                                            <button onclick="window.openEditItem('${bill.id}', ${idx})" class="p-1 text-slate-300 hover:text-slate-800"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
+                                            <button onclick="window.removeItem('${bill.id}', ${idx})" class="p-1 text-slate-300 hover:text-red-500"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;}).join('')}
+                        </div>
+                    ` : ''}
+                `;
+            },
+
+            renderBillsList(container) {
+                container.innerHTML = `
+                    <div class="space-y-2">
+                        ${state.bills.length === 0 ? `
+                            <div class="bg-white rounded-xl p-8 text-center border border-slate-200"><p class="text-slate-400 text-xs">No bills found.</p></div>
+                        ` : state.bills.slice().reverse().map(bill => {
+                            const res = this.processBillLogic(bill);
+                            return `
+                                <div onclick="router.navigate('detail', {id: '${bill.id}'})" class="bg-white p-3 rounded-xl border border-slate-200 flex justify-between items-center cursor-pointer hover:border-slate-800 transition-colors">
+                                    <div>
+                                        <p class="font-bold text-slate-800 text-sm tracking-tight">${bill.title}</p>
+                                        <p class="text-[9px] text-slate-400 uppercase font-bold tracking-tight">${bill.people.length} people • ${bill.mode}</p>
+                                    </div>
+                                    <div class="text-right"><p class="font-bold text-slate-800 text-sm tracking-tight">$${(bill.totalAmount || res.total).toFixed(2)}</p></div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            },
+
+            processBillLogic(bill) {
+                let subtotal = 0;
+                let peopleSplits = bill.people.map(p => ({ name: p, subtotal: 0, paid: parseFloat(bill.payments?.[p] || 0), net: 0, totalConsumption: 0 }));
+                if (bill.mode === 'itemized') {
+                    bill.items.forEach(item => {
+                        const amt = parseFloat(item.amount); subtotal += amt;
+                        const targets = Array.isArray(item.assignedTo) ? item.assignedTo : bill.people;
+                        const share = amt / targets.length;
+                        targets.forEach(n => { const p = peopleSplits.find(ps => ps.name === n); if (p) p.subtotal += share; });
+                    });
+                } else {
+                    const gt = parseFloat(bill.totalAmount || 0);
+                    subtotal = gt / 1.199;
+                    peopleSplits.forEach(p => p.subtotal = subtotal * ((bill.splits[p.name] || 0) / 100));
+                }
+                const globalTaxes = calculateSequentialTax(subtotal);
+                peopleSplits.forEach(p => {
+                    const tx = calculateSequentialTax(p.subtotal);
+                    p.totalConsumption = tx.total; p.net = p.totalConsumption - p.paid;
+                });
+                return { ...globalTaxes, peopleSplits };
+            }
+        };
+
+        // --- CALCULATOR ---
+        window.openCalculator = (targetId) => { window.calcTarget = targetId; window.calcState = "0"; window.calcHistory = ""; document.getElementById('calc-display').innerText = "0"; document.getElementById('calc-display-history').innerText = ""; document.getElementById('calc-container').classList.remove('hidden'); };
+        window.closeCalculator = () => { document.getElementById('calc-container').classList.add('hidden'); };
+        window.applyCalculator = () => { if (window.calcTarget) { const el = document.getElementById(window.calcTarget); if (el) { el.value = parseFloat(window.calcState) || 0; el.dispatchEvent(new Event('change')); } } window.closeCalculator(); };
+        window.calcAction = (val) => {
+            const display = document.getElementById('calc-display'); const history = document.getElementById('calc-display-history');
+            if (val === 'C') { window.calcState = "0"; window.calcHistory = ""; }
+            else if (val === 'back') { window.calcState = window.calcState.length > 1 ? window.calcState.slice(0, -1) : "0"; }
+            else if (val === '=') { try { const r = Function(`'use strict'; return (${window.calcState})`)(); window.calcHistory = window.calcState + " ="; window.calcState = String(r % 1 === 0 ? r : r.toFixed(2)); } catch (e) { window.calcState = "Error"; } }
+            else { if (window.calcState === "0" && !isNaN(val)) window.calcState = val; else window.calcState += val; }
+            display.innerText = window.calcState; history.innerText = window.calcHistory;
+        };
+
+        // --- GLOBAL ACTIONS ---
+        window.resetCreateStep = () => { window.createStep = 1; window.newBillPeople = [state.selfName]; window.newBillMode = 'itemized'; };
+        window.setCreateStep = (s) => { window.createStep = s; router.render(); };
+        window.toggleDetailSection = (key) => { window.detailToggles[key] = !window.detailToggles[key]; router.render(); };
+        window.finishPaidSection = () => { window.detailToggles.paid = false; window.detailToggles.summary = true; router.render(); };
+        window.selectMode = (m) => { window.newBillMode = m; router.render(); };
+        
+        window.addPerson = () => {
+            const input = document.getElementById('person-input'); const name = input.value.trim();
+            if (name && !window.newBillPeople.includes(name)) { window.newBillPeople.push(name); input.value = ''; router.render(); }
+        };
+        window.removePersonFromNewBill = (name) => {
+            window.newBillPeople = window.newBillPeople.filter(p => p !== name); router.render();
+        };
+
+        window.addPersonToBill = (billId) => {
+            const input = document.getElementById('add-forgotten-person');
+            const name = input.value.trim();
+            if (!name) return;
+            const bill = state.bills.find(b => b.id === billId);
+            if (bill && !bill.people.includes(name)) {
+                bill.people.push(name);
+                bill.payments[name] = 0;
+                if (bill.mode === 'percentage') bill.splits[name] = 0;
+                saveState(); router.render();
+            }
+        };
+
+        window.removePersonFromBill = (billId, personName) => {
+            const bill = state.bills.find(b => b.id === billId);
+            if (!bill || personName === state.selfName) return;
+            
+            // 1. Remove from people list
+            bill.people = bill.people.filter(p => p !== personName);
+            
+            // 2. Cleanup associated dictionaries
+            delete bill.payments[personName];
+            delete bill.splits[personName];
+            
+            // 3. Clean up item assignments
+            bill.items.forEach(item => {
+                if (Array.isArray(item.assignedTo)) {
+                    item.assignedTo = item.assignedTo.filter(p => p !== personName);
+                }
+            });
+            
+            saveState();
+            router.render();
+        };
+
+        window.createBill = () => {
+            const title = document.getElementById('bill-title')?.value.trim() || 'New Bill';
+            const newBill = { id: crypto.randomUUID(), title, mode: window.newBillMode, people: [...window.newBillPeople], items: [], totalAmount: 0, splits: {}, payments: {} };
+            newBill.people.forEach(p => newBill.payments[p] = 0);
+            if (newBill.mode === 'percentage') {
+                const share = Math.floor(100 / newBill.people.length);
+                newBill.people.forEach(p => newBill.splits[p] = share);
+            }
+            state.bills.push(newBill); saveState(); router.navigate('detail', {id: newBill.id});
+        };
+
+        window.addItem = (billId) => {
+            const nEl = document.getElementById('item-name'); const aEl = document.getElementById('item-amount');
+            const checks = document.querySelectorAll('.item-assign-check:checked');
+            const n = nEl.value.trim(); const a = parseFloat(aEl.value); const targets = Array.from(checks).map(c => c.value);
+            if (!n || isNaN(a) || targets.length === 0) return;
+            const bill = state.bills.find(b => b.id === billId);
+            bill.items.push({ name: n, amount: a, assignedTo: targets });
+            saveState(); nEl.value = ''; aEl.value = ''; router.render();
+        };
+
+        window.openEditItem = (billId, idx) => {
+            const b = state.bills.find(x => x.id === billId); const item = b.items[idx];
+            const assigned = Array.isArray(item.assignedTo) ? item.assignedTo : b.people;
+            window.showModal(`
+                <div class="space-y-3">
+                    <h3 class="text-sm font-bold text-slate-800 uppercase tracking-tight">Edit Line Item</h3>
+                    <div class="space-y-2">
+                        <input type="text" id="edit-item-name" value="${item.name}" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none">
+                        <div class="flex gap-2">
+                            <input type="number" step="0.01" id="edit-item-amount" value="${item.amount}" class="flex-grow p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none">
+                            <button onclick="window.openCalculator('edit-item-amount')" class="bg-slate-100 p-2 rounded-lg text-slate-500 active:bg-slate-200"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg></button>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-1 p-1 bg-slate-50 border rounded-lg max-h-32 overflow-y-auto">
+                        ${b.people.map(p => `<label class="flex items-center gap-1 text-[9px] font-bold bg-white border p-1 rounded cursor-pointer"><input type="checkbox" value="${p}" ${assigned.includes(p) ? 'checked' : ''} class="edit-item-check accent-slate-800"> ${p}</label>`).join('')}
+                    </div>
+                    <div class="flex gap-2 pt-1">
+                        <button onclick="window.closeModal()" class="flex-grow p-2 bg-slate-100 text-slate-500 text-xs font-bold rounded-lg">Cancel</button>
+                        <button onclick="window.saveEditItem('${billId}', ${idx})" class="flex-grow p-2 bg-slate-800 text-white text-xs font-bold rounded-lg shadow-sm">Save</button>
+                    </div>
+                </div>
+            `);
+        };
+
+        window.saveEditItem = (bId, idx) => {
+            const n = document.getElementById('edit-item-name').value.trim(); const a = parseFloat(document.getElementById('edit-item-amount').value);
+            const checks = document.querySelectorAll('.edit-item-check:checked'); const targets = Array.from(checks).map(c => c.value);
+            if (!n || isNaN(a) || targets.length === 0) return;
+            state.bills.find(b => b.id === bId).items[idx] = { name: n, amount: a, assignedTo: targets };
+            saveState(); window.closeModal(); router.render();
+        };
+
+        window.updateBillTotal = (bId, v) => { state.bills.find(b => b.id === bId).totalAmount = parseFloat(v) || 0; saveState(); router.render(); };
+        window.updatePayment = (bId, p, v) => { state.bills.find(b => b.id === bId).payments[p] = parseFloat(v) || 0; saveState(); router.render(); };
+        window.updateSplitRange = (bId, p, v) => { state.bills.find(b => b.id === bId).splits[p] = parseInt(v); saveState(); router.render(); };
+        window.removeItem = (bId, idx) => { state.bills.find(b => b.id === bId).items.splice(idx, 1); saveState(); router.render(); };
+        window.deleteBill = (id) => {
+            const b = state.bills.find(x => x.id === id);
+            window.showModal(`
+                <div class="text-center space-y-3">
+                    <h3 class="text-sm font-bold text-red-600 uppercase tracking-tight">Delete Bill?</h3>
+                    <div class="flex gap-2"><button onclick="window.closeModal()" class="flex-grow p-2 bg-slate-100 rounded-lg text-xs font-bold text-slate-500">No</button><button onclick="window.confirmDeleteBill('${id}')" class="flex-grow p-2 bg-red-600 text-white rounded-lg text-xs font-bold shadow-sm">Yes, Delete</button></div>
+                </div>
+            `);
+        };
+        window.confirmDeleteBill = (id) => { state.bills = state.bills.filter(b => b.id !== id); saveState(); window.closeModal(); router.navigate('dashboard'); };
+        window.openSettings = () => {
+            window.showModal(`
+                <div class="space-y-3">
+                    <h3 class="text-sm font-bold text-slate-800 uppercase tracking-tight">Profile Settings</h3>
+                    <input type="text" id="edit-self-name" value="${state.selfName}" class="w-full p-2 bg-slate-50 border rounded-lg text-xs focus:outline-none">
+                    <div class="flex gap-2"><button onclick="window.closeModal()" class="flex-grow p-2 bg-slate-100 rounded-lg text-xs font-bold text-slate-500">Cancel</button><button onclick="window.saveSettings()" class="flex-grow p-2 bg-slate-800 text-white rounded-lg text-xs font-bold shadow-sm">Save</button></div>
+                </div>
+            `);
+        };
+        window.saveSettings = () => { const n = document.getElementById('edit-self-name').value.trim(); if (n) { state.selfName = n; saveState(); window.closeModal(); router.render(); } };
+        window.showModal = (c) => { const ct = document.getElementById('modal-container'); const ca = document.getElementById('modal-content'); ca.innerHTML = c; ct.classList.remove('hidden'); setTimeout(() => ca.classList.remove('translate-y-full'), 10); };
+        window.closeModal = () => { const ct = document.getElementById('modal-container'); const ca = document.getElementById('modal-content'); ca.classList.add('translate-y-full'); setTimeout(() => ct.classList.add('hidden'), 300); };
+        window.onload = () => { router.navigate('dashboard'); };
+    </script>
+</body>
+</html>

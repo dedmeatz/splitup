@@ -1,0 +1,21 @@
+{
+  "name": "SettleUp Bill Splitter",
+  "short_name": "SettleUp",
+  "description": "Precision bill splitting with contribution tracking.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192x192/2563eb/ffffff?text=S",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://via.placeholder.com/512x512/2563eb/ffffff?text=SettleUp",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}
