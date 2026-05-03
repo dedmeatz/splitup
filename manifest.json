@@ -8,14 +8,9 @@
   "theme_color": "#2563eb",
   "icons": [
     {
-      "src": "https://via.placeholder.com/192x192/2563eb/ffffff?text=S",
+      "src": "./img/icon.png",
       "type": "image/png",
       "sizes": "192x192"
-    },
-    {
-      "src": "https://via.placeholder.com/512x512/2563eb/ffffff?text=SettleUp",
-      "type": "image/png",
-      "sizes": "512x512"
     }
   ]
 }
