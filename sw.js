@@ -6,7 +6,6 @@ const CACHE_NAME = 'settleup-v1.5';
 const ASSETS = [
   './',
   './index.html',
-  './manifest.json',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
 ];
